@@ -24,4 +24,6 @@ This project uses AWS Cloud Development Kit (CDK) in TypeScript to deploy a simp
 ### 1. Clone the Repository
 ```bash
 
+https://github.com/Makarious20/CDK-ec2-rds-lib.git
+
 cd cdk-website-lab
