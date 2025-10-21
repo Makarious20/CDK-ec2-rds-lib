@@ -1,0 +1,51 @@
+import * as cdk from 'aws-cdk-lib';
+import { Instance, InstanceType, AmazonLinuxImage, SubnetType, SecurityGroup, Peer, Port } from 'aws-cdk-lib/aws-ec2';
+import { DatabaseInstance, DatabaseInstanceEngine, MysqlEngineVersion } from 'aws-cdk-lib/aws-rds';
+import { Construct } from 'constructs';
+import { NetworkStack } from './network-stack';
+
+export class ServerStack extends cdk.Stack {
+  constructor(scope: Construct, id: string, props: cdk.StackProps & { networkStack: NetworkStack }) {
+    super(scope, id, props);
+
+    const vpc = props.networkStack.vpc;
+
+    const webSG = new SecurityGroup(this, 'WebSG', {
+      vpc,
+      description: 'Allow HTTP from anywhere',
+      allowAllOutbound: true,
+    });
+    webSG.addIngressRule(Peer.anyIpv4(), Port.tcp(80));
+
+    const rdsSG = new SecurityGroup(this, 'RDSSG', {
+      vpc,
+      description: 'Allow MySQL from web servers',
+      allowAllOutbound: true,
+    });
+    rdsSG.addIngressRule(webSG, Port.tcp(3306));
+
+    const publicSubnets = vpc.selectSubnets({ subnetType: SubnetType.PUBLIC });
+
+    publicSubnets.subnets.forEach((subnet, index) => {
+      new Instance(this, `WebServer${index + 1}`, {
+        vpc,
+        vpcSubnets: { subnets: [subnet] },
+        instanceType: new InstanceType('t2.micro'),
+        machineImage: new AmazonLinuxImage(),
+        securityGroup: webSG,
+      });
+    });
+
+    new DatabaseInstance(this, 'MySQLInstance', {
+      engine: DatabaseInstanceEngine.mysql({ version: MysqlEngineVersion.VER_8_0 }),
+      vpc,
+      vpcSubnets: vpc.selectSubnets({ subnetType: SubnetType.PRIVATE_WITH_EGRESS }),
+      securityGroups: [rdsSG],
+      instanceType: new InstanceType('t3.micro'),
+      allocatedStorage: 20,
+      multiAz: false,
+      publiclyAccessible: false,
+      deletionProtection: false,
+    });
+  }
+}
